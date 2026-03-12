@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, FileText, CheckCircle, Clock, Trash2, Edit } from "lucide-react";
+import { Plus, FileText, CheckCircle, Clock, Trash2, Edit, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import {
@@ -63,6 +63,16 @@ export type InvoiceRecord = {
   }[];
 };
 
+export type Payment = {
+  id: string;
+  invoice_id: string;
+  patient_id: string;
+  amount: number;
+  payment_method: string;
+  notes?: string;
+  created_at: string;
+};
+
 interface PatientInvoicesProps {
   patientId: string;
   patientDetails?: {
@@ -103,11 +113,26 @@ export function PatientInvoices({
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceRecord | null>(
     null,
   );
+  const [paymentMethod, setPaymentMethod] = useState<string>("cash");
+  const [patientPayments, setPatientPayments] = useState<Payment[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+
+  const fetchPayments = useCallback(async () => {
+    setLoadingPayments(true);
+    const { data } = await supabase
+      .from("payments")
+      .select("*")
+      .eq("patient_id", patientId)
+      .order("created_at", { ascending: false });
+    if (data) setPatientPayments(data);
+    setLoadingPayments(false);
+  }, [supabase, patientId]);
 
   // Sync state with props when initialInvoices changes (due to router.refresh)
   useEffect(() => {
     setInvoices(initialInvoices);
-  }, [initialInvoices]);
+    fetchPayments();
+  }, [initialInvoices, fetchPayments]);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<InvoiceRecord | null>(null);
@@ -214,6 +239,20 @@ export function PatientInvoices({
     }
 
     try {
+      // 1. Insert payment record
+      const { error: paymentError } = await supabase
+        .from("payments")
+        .insert({
+          invoice_id: selectedInvoice.id,
+          patient_id: patientId,
+          amount: amountToAdd,
+          payment_method: paymentMethod,
+          created_at: new Date().toISOString()
+        });
+
+      if (paymentError) throw paymentError;
+
+      // 2. Update invoice paid amount
       const { error } = await supabase
         .from("invoices")
         .update({ status: newStatus, paid_amount: newPaidAmount })
@@ -231,9 +270,12 @@ export function PatientInvoices({
             : inv,
         ),
       );
+      
+      fetchPayments();
 
       setIsPaymentMenuOpen(false);
       setPaymentAmount("");
+      setPaymentMethod("cash");
       setSelectedInvoice(null);
     } catch (error) {
       console.error("Error updating invoice:", error);
@@ -626,10 +668,28 @@ export function PatientInvoices({
                         selectedInvoice.paid_amount
                       : undefined
                   }
-                  placeholder="Ex: 10000"
                   value={paymentAmount}
                   onChange={(e) => setPaymentAmount(e.target.value)}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="payment_method">Mode de Règlement</Label>
+                <Select
+                  value={paymentMethod}
+                  onValueChange={(val: string | null) => val && setPaymentMethod(val)}
+                >
+                  <SelectTrigger id="payment_method">
+                    <SelectValue placeholder="Choisir un mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Espèces</SelectItem>
+                    <SelectItem value="card">Carte Bancaire / TPE</SelectItem>
+                    <SelectItem value="transfer">Virement / Orange Money</SelectItem>
+                    <SelectItem value="check">Chèque</SelectItem>
+                    <SelectItem value="insurance">Prise en charge (Mutuelle)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <DialogFooter>
@@ -768,6 +828,64 @@ export function PatientInvoices({
           </form>
         </DialogContent>
       </Dialog>
+
+      <div className="mt-12 space-y-6">
+        <div className="px-1">
+          <h3 className="text-lg font-bold flex items-center gap-2">
+            <Clock className="w-5 h-5 text-primary" />
+            Historique des Règlements
+          </h3>
+          <p className="text-sm text-muted-foreground">Trace chronologique de tous les paiements reçus.</p>
+        </div>
+
+        {loadingPayments ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          </div>
+        ) : patientPayments.length === 0 ? (
+          <div className="p-8 text-center border rounded-lg bg-slate-50/50 italic text-sm text-slate-400">
+            Aucun paiement enregistré pour le moment.
+          </div>
+        ) : (
+          <div className="border rounded-xl overflow-hidden bg-white shadow-sm">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium text-slate-500">Date</th>
+                  <th className="px-4 py-3 text-left font-medium text-slate-500">Mode</th>
+                  <th className="px-4 py-3 text-right font-medium text-slate-500">Montant</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {patientPayments.map((p) => (
+                  <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-4 py-4 text-slate-600">
+                      {new Date(p.created_at).toLocaleDateString("fr-FR", {
+                        day: "2-digit",
+                        month: "long",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </td>
+                    <td className="px-4 py-4">
+                      <span className="capitalize px-2 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                        {p.payment_method === "cash" ? "Espèces" : 
+                         p.payment_method === "card" ? "Carte" : 
+                         p.payment_method === "transfer" ? "Vir./OM" : 
+                         p.payment_method === "check" ? "Chèque" : "Mutuelle"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4 text-right font-black text-slate-900">
+                      {formatCurrency(p.amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </Card>
   );
 }

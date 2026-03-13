@@ -233,11 +233,11 @@ export function AppSidebar() {
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <User2 className="h-4 w-4" />}
               </div>
               <div className="flex flex-col flex-1 overflow-hidden">
-                <span className="text-sm font-semibold text-slate-800 truncate">
-                  {profile ? `${profile.first_name} ${profile.last_name}` : (user as { email?: string })?.email?.split('@')[0] || "Invité"}
+                <span className="text-sm font-bold text-slate-900 truncate">
+                  {profile ? `${profile.first_name} ${profile.last_name}` : "Utilisateur"}
                 </span>
-                <span className="text-xs text-slate-500 truncate lowercase first-letter:uppercase">
-                  {profile ? roleLabels[profile.role] : "DABIA Staff"}
+                <span className="text-[10px] text-slate-500 truncate font-medium">
+                  {(user as any)?.email || "Chargement..."}
                 </span>
               </div>
               <ChevronUp className="h-4 w-4 text-slate-400 group-hover:text-slate-600 transition-transform" />
@@ -246,25 +246,34 @@ export function AppSidebar() {
           <DropdownMenuContent
             side="top"
             align="end"
-            className="w-[200px] rounded-xl p-1"
+            className="w-[240px] rounded-xl p-2 shadow-xl border-slate-200 bg-white"
           >
+            <div className="px-2 py-2 mb-2 border-b border-slate-100">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-1">Session Active</p>
+              <p className="text-sm font-bold text-slate-900 truncate">
+                {profile ? `${profile.first_name} ${profile.last_name}` : "Chargement..."}
+              </p>
+              <p className="text-xs text-slate-500 truncate">
+                {(user as any)?.email}
+              </p>
+            </div>
             <DropdownMenuItem 
-              className="rounded-lg cursor-pointer p-0"
+              className="rounded-lg cursor-pointer flex items-center gap-2 p-2 hover:bg-slate-50"
             >
               <Link 
                 href="/admin/settings" 
-                className="flex items-center w-full px-2 py-1.5"
+                className="flex items-center w-full"
               >
-                <User2 className="mr-2 h-4 w-4" />
-                <span>Mon Profil</span>
+                <User2 className="mr-2 h-4 w-4 text-slate-400" />
+                <span className="font-medium text-slate-700">Paramètres du Profil</span>
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem 
-              className="rounded-lg cursor-pointer text-destructive focus:text-destructive"
+              className="rounded-lg cursor-pointer flex items-center gap-2 p-2 text-destructive focus:text-destructive hover:bg-red-50"
               onClick={handleLogout}
             >
               <LogOut className="mr-2 h-4 w-4" />
-              <span>Déconnexion</span>
+              <span className="font-bold">Se déconnecter de DABIA</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
           </DropdownMenu>

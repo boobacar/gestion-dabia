@@ -107,6 +107,8 @@ const items: {
   },
 ];
 
+import { ThemeToggle } from "./ThemeToggle";
+
 export function AppSidebar() {
   const [isMounted, setIsMounted] = useState(false);
   const pathname = usePathname();
@@ -148,26 +150,29 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar className="border-r border-slate-200/50 bg-white/80 backdrop-blur-xl">
+    <Sidebar className="border-r border-slate-200/50 dark:border-slate-800/50 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl">
       <SidebarHeader className="p-6">
-        <div className="flex items-center gap-3">
-          <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-slate-100 shadow-sm bg-white">
-            <Image
-              src="/logo.jpg"
-              alt="DABIA Logo"
-              fill
-              priority
-              className="object-contain p-1"
-            />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm bg-white dark:bg-white/90">
+              <Image
+                src="/logo.jpg"
+                alt="DABIA Logo"
+                fill
+                priority
+                className="object-contain p-1"
+              />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                DABIA
+              </span>
+              <span className="text-[10px] uppercase tracking-wider font-semibold text-primary">
+                Clinique Dentaire
+              </span>
+            </div>
           </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-bold tracking-tight text-slate-900">
-              DABIA
-            </span>
-            <span className="text-[10px] uppercase tracking-wider font-semibold text-primary">
-              Clinique Dentaire
-            </span>
-          </div>
+          <ThemeToggle />
         </div>
       </SidebarHeader>
 
@@ -200,7 +205,7 @@ export function AppSidebar() {
                             "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-300 group relative",
                             isActive 
                               ? "bg-primary/10 text-primary font-semibold" 
-                              : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                              : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900 hover:text-slate-900 dark:hover:text-slate-100"
                           )}
                         />
                       }
@@ -228,15 +233,15 @@ export function AppSidebar() {
         ) : (
           <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100 text-left group">
+            <button className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors border border-transparent hover:border-slate-100 dark:hover:border-slate-800 text-left group">
               <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <User2 className="h-4 w-4" />}
               </div>
               <div className="flex flex-col flex-1 overflow-hidden">
-                <span className="text-sm font-semibold text-slate-800 truncate">
+                <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
                   {profile ? `${profile.first_name} ${profile.last_name}` : (user as { email?: string })?.email?.split('@')[0] || "Invité"}
                 </span>
-                <span className="text-xs text-slate-500 truncate lowercase first-letter:uppercase">
+                <span className="text-xs text-slate-500 dark:text-slate-400 truncate lowercase first-letter:uppercase">
                   {profile ? roleLabels[profile.role] : "DABIA Staff"}
                 </span>
               </div>

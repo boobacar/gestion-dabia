@@ -98,7 +98,6 @@ export default function ExpensesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     description: "",
@@ -110,8 +109,8 @@ export default function ExpensesPage() {
 
   const supabase = createClient();
 
-  const fetchExpenses = useCallback(async () => {
-    setLoading(true);
+  const fetchExpenses = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setLoading(true);
     const { data, error } = await supabase
       .from("expenses")
       .select("*")
@@ -126,7 +125,7 @@ export default function ExpensesPage() {
   }, [supabase]);
 
   useEffect(() => {
-    fetchExpenses();
+    fetchExpenses(false);
   }, [fetchExpenses]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -152,7 +151,7 @@ export default function ExpensesPage() {
         payment_method: "cash",
         expense_date: format(new Date(), "yyyy-MM-dd"),
       });
-      fetchExpenses();
+      fetchExpenses(true);
     } else {
       toast.error(res.error || "Une erreur est survenue");
     }
@@ -163,11 +162,10 @@ export default function ExpensesPage() {
     const res = await deleteExpense(id);
     if (res.success) {
       toast.success("Dépense supprimée");
-      fetchExpenses();
+      fetchExpenses(true);
     } else {
       toast.error(res.error || "Erreur lors de la suppression");
     }
-    setDeletingId(null);
   };
 
   const filteredExpenses = expenses.filter(exp => 
@@ -240,8 +238,8 @@ export default function ExpensesPage() {
                   <Label>Catégorie</Label>
                   <Select 
                     value={formData.category} 
-                    onValueChange={(val: string) => {
-                      if (val) setFormData({...formData, category: val});
+                    onValueChange={(val) => {
+                      if (val) setFormData({...formData, category: val as string});
                     }}
                   >
                     <SelectTrigger>
@@ -258,8 +256,8 @@ export default function ExpensesPage() {
                   <Label>Paiement</Label>
                   <Select 
                     value={formData.payment_method} 
-                    onValueChange={(val: string) => {
-                      if (val) setFormData({...formData, payment_method: val});
+                    onValueChange={(val) => {
+                      if (val) setFormData({...formData, payment_method: val as string});
                     }}
                   >
                     <SelectTrigger>
@@ -390,7 +388,7 @@ export default function ExpensesPage() {
                             <AlertDialogHeader>
                               <AlertDialogTitle>Supprimer cette dépense ?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Cette action est irréversible. La dépense "{exp.description}" sera définitivement supprimée de la comptabilité.
+                                Cette action est irréversible. La dépense &quot;{exp.description}&quot; sera définitivement supprimée de la comptabilité.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>

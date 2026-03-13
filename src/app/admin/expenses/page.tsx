@@ -107,10 +107,10 @@ export default function ExpensesPage() {
     expense_date: format(new Date(), "yyyy-MM-dd"),
   });
 
-  const supabase = createClient();
-
   const fetchExpenses = useCallback(async (isRefresh = false) => {
     if (isRefresh) setLoading(true);
+
+    const supabase = createClient();
     const { data, error } = await supabase
       .from("expenses")
       .select("*")
@@ -122,7 +122,7 @@ export default function ExpensesPage() {
       setExpenses(data || []);
     }
     setLoading(false);
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     fetchExpenses(false);

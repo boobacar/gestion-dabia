@@ -285,8 +285,9 @@ function PlanItemForm({ planId, catalog, onSuccess }: { planId: string; catalog:
            <div className="col-span-3 space-y-2">
               <Label>Acte clinique</Label>
               <Select onValueChange={(val) => {
-                setTreatmentId(val);
-                const t = catalog.find(x => x.id === val);
+                const selected = String(val);
+                setTreatmentId(selected);
+                const t = catalog.find((x) => x.id === selected);
                 if (t) setPrice(t.price.toString());
               }}>
                 <SelectTrigger>

@@ -239,6 +239,8 @@ class WhatsAppManager {
       } else {
         await supabase.from("whatsapp_chats").update({ last_message: body, last_message_at: new Date().toISOString() }).eq("id", chat.id);
       }
+      if (!chat?.id) return;
+
       await supabase.from("whatsapp_messages").upsert({
         chat_id: chat.id,
         wa_message_id: msg.key.id!,

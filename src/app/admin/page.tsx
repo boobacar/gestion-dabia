@@ -19,85 +19,64 @@ import { fr } from "date-fns/locale";
 import { RevenueChart } from "@/components/RevenueChart";
 import { TrendingUp, TrendingDown, DollarSign, PieChart, BarChart3 } from "lucide-react";
 
+import { redirect } from "next/navigation";
+
 export default async function AdminDashboardPage() {
   const supabase = await createClient();
 
-  // 1. Total Patients
-  const { count: totalPatients } = await supabase
-    .from("patients")
-    .select("*", { count: "exact", head: true });
+  // Role-based redirection
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+    
+    if (profile?.role === "dentist") {
+      redirect("/admin/appointments");
+    }
+  }
 
-  // 2. Upcoming Appointments (Today onwards) - [Removed from KPI row to make space for advanced stats]
-
-
-  // 3. Treatments recorded this month & last month
+  // Pre-calculations for queries
   const now = new Date();
   const startOfThisMonth = fnsStartOfMonth(now);
   const startOfLastMonth = fnsStartOfMonth(subMonths(now, 1));
   const endOfLastMonth = fnsEndOfMonth(subMonths(now, 1));
-
-  const { data: treatmentsThisMonthData } = await supabase
-    .from("odontogram_records")
-    .select("condition, date_recorded")
-    .gte("date_recorded", startOfThisMonth.toISOString());
-
-  const { count: treatmentsLastMonth } = await supabase
-    .from("odontogram_records")
-    .select("*", { count: "exact", head: true })
-    .gte("date_recorded", startOfLastMonth.toISOString())
-    .lte("date_recorded", endOfLastMonth.toISOString());
+  const sixMonthsAgo = subMonths(new Date(), 5);
+  sixMonthsAgo.setDate(1);
+  sixMonthsAgo.setHours(0, 0, 0, 0);
+  // Data Fetching in Parallel
+  const [
+    { count: totalPatients },
+    { data: treatmentsThisMonthData },
+    { count: treatmentsLastMonth },
+    { data: monthAppointments },
+    { data: recentPatients },
+    { data: recentInvoices },
+    { data: currentMonthInvoices },
+    { data: lastMonthInvoices },
+    { data: currentMonthExpenses },
+    { data: allUnpaidInvoices },
+    { data: historicalInvoices }
+  ] = await Promise.all([
+    supabase.from("patients").select("*", { count: "exact", head: true }),
+    supabase.from("odontogram_records").select("condition, date_recorded").gte("date_recorded", startOfThisMonth.toISOString()),
+    supabase.from("odontogram_records").select("*", { count: "exact", head: true }).gte("date_recorded", startOfLastMonth.toISOString()).lte("date_recorded", endOfLastMonth.toISOString()),
+    supabase.from("appointments").select("duration_minutes").gte("appointment_date", startOfThisMonth.toISOString()).lte("appointment_date", fnsEndOfMonth(now).toISOString()).neq("status", "cancelled"),
+    supabase.from("patients").select("id, first_name, last_name, patient_number, created_at").order("created_at", { ascending: false }).limit(5),
+    supabase.from("invoices").select("id, total_amount, status, created_at, patients (first_name, last_name)").order("created_at", { ascending: false }).limit(5),
+    supabase.from("invoices").select("total_amount, paid_amount, status").gte("created_at", startOfThisMonth.toISOString()),
+    supabase.from("invoices").select("total_amount, paid_amount, status").gte("created_at", startOfLastMonth.toISOString()).lte("created_at", endOfLastMonth.toISOString()),
+    supabase.from("expenses").select("amount").gte("expense_date", startOfThisMonth.toISOString()),
+    supabase.from("invoices").select("total_amount, paid_amount").neq("status", "paid"),
+    supabase.from("invoices").select("created_at, paid_amount").gte("created_at", sixMonthsAgo.toISOString())
+  ]);
 
   const treatmentsCount = treatmentsThisMonthData?.length || 0;
-
-  // 4. Occupancy Rate (Cabinet Usage)
-  // Logic: Sum of duration_minutes / Total capacity (e.g., 40h/week * 4 weeks = 160h = 9600m)
-  const { data: monthAppointments } = await supabase
-    .from("appointments")
-    .select("duration_minutes")
-    .gte("appointment_date", startOfThisMonth.toISOString())
-    .lte("appointment_date", fnsEndOfMonth(now).toISOString())
-    .neq("status", "cancelled");
-
   const totalBookedMinutes = monthAppointments?.reduce((acc, apt) => acc + (apt.duration_minutes || 0), 0) || 0;
   const totalCapacityMinutes = 160 * 60; // 160 hours per month
   const occupancyRate = Math.min(Math.round((totalBookedMinutes / totalCapacityMinutes) * 100), 100);
-
-  // 5. Recent Patients
-  const { data: recentPatients } = await supabase
-    .from("patients")
-    .select("id, first_name, last_name, patient_number, created_at")
-    .order("created_at", { ascending: false })
-    .limit(5);
-
-  // 6. Recent Invoices (Activity)
-  const { data: recentInvoices } = await supabase
-    .from("invoices")
-    .select(
-      `
-      id, 
-      total_amount, 
-      status, 
-      created_at, 
-      patients (
-        first_name, 
-        last_name
-      )
-    `,
-    )
-    .order("created_at", { ascending: false })
-    .limit(5);
-
-  // 7. Calculate Monthly Revenue and Average Basket
-  const { data: currentMonthInvoices } = await supabase
-    .from("invoices")
-    .select("total_amount, paid_amount, status")
-    .gte("created_at", startOfThisMonth.toISOString());
-
-  const { data: lastMonthInvoices } = await supabase
-    .from("invoices")
-    .select("total_amount, paid_amount, status")
-    .gte("created_at", startOfLastMonth.toISOString())
-    .lte("created_at", endOfLastMonth.toISOString());
 
   const currentMonthRevenue = currentMonthInvoices?.reduce((acc, inv) => acc + (inv.paid_amount || 0), 0) || 0;
   const lastMonthRevenue = lastMonthInvoices?.reduce((acc, inv) => acc + (inv.paid_amount || 0), 0) || 0;
@@ -110,48 +89,10 @@ export default async function AdminDashboardPage() {
     ? Math.round(currentMonthRevenue / currentMonthInvoices.length) 
     : 0;
 
-  // 8. Global Outstanding Balance (Debt)
-  const { data: allUnpaidInvoices } = await supabase
-    .from("invoices")
-    .select("total_amount, paid_amount")
-    .neq("status", "paid");
+  const currentMonthExpensesTotal = currentMonthExpenses?.reduce((acc, exp) => acc + Number(exp.amount), 0) || 0;
+  const netProfit = currentMonthRevenue - currentMonthExpensesTotal;
 
   const globalDebt = allUnpaidInvoices?.reduce((acc, inv) => acc + (inv.total_amount - (inv.paid_amount || 0)), 0) || 0;
-
-  // 9. Top Treatments
-  const treatmentFreq: Record<string, number> = {};
-  treatmentsThisMonthData?.forEach(t => {
-    treatmentFreq[t.condition] = (treatmentFreq[t.condition] || 0) + 1;
-  });
-  
-  const LABEL_MAP: Record<string, string> = {
-    caries: "Carie",
-    filling: "Plombage",
-    crown: "Couronne",
-    implant: "Implant",
-    to_extract: "Extraction",
-    healthy: "Contrôle",
-    missing: "Absente",
-  };
-
-  const topTreatments = Object.entries(treatmentFreq)
-    .map(([name, count]) => ({ 
-      name: LABEL_MAP[name] || name, 
-      count 
-    }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 3);
-
-  // 8. Generate chart data (last 6 months pseudo-real data)
-  // To avoid complex group-by SQL, we fetch last 6 months of paid invoices and group them in JS
-  const sixMonthsAgo = subMonths(new Date(), 5);
-  sixMonthsAgo.setDate(1);
-  sixMonthsAgo.setHours(0, 0, 0, 0);
-
-  const { data: historicalInvoices } = await supabase
-    .from("invoices")
-    .select("created_at, paid_amount")
-    .gte("created_at", sixMonthsAgo.toISOString());
 
   // Initialize 6 months buckets
   const revenueDataMap = new Map();
@@ -295,46 +236,55 @@ export default async function AdminDashboardPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="bg-emerald-50/30 border-emerald-100">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-xs font-bold uppercase text-emerald-700">Bénéfice Net</CardTitle>
+            <TrendingUp className="h-4 w-4 text-emerald-600" />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-black ${netProfit >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+              {formatCurrency(netProfit)}
+            </div>
+            <p className="text-[10px] font-bold text-emerald-600/70 mt-1 uppercase">Revenus - Dépenses (Mois)</p>
+          </CardContent>
+        </Card>
+
+        <Link href="/admin/expenses" className="block transition-transform hover:scale-[1.02] active:scale-[0.98]">
+          <Card className="bg-rose-50/30 border-rose-100">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-xs font-bold uppercase text-rose-700">Dépenses totales</CardTitle>
+              <TrendingDown className="h-4 w-4 text-rose-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-black text-rose-700">{formatCurrency(currentMonthExpensesTotal)}</div>
+              <p className="text-[10px] font-bold text-rose-600/70 mt-1 uppercase">Ce mois-ci</p>
+            </CardContent>
+          </Card>
+        </Link>
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Panier Moyen</CardTitle>
+            <CardTitle className="text-xs font-bold uppercase text-slate-500">Panier Moyen</CardTitle>
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(averageBasket)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Par facture ce mois</p>
+            <div className="text-2xl font-black">{formatCurrency(averageBasket)}</div>
+            <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase">Par facture ce mois</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Reste à Recouvrer</CardTitle>
-            <Clock className="h-4 w-4 text-amber-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-amber-600">{formatCurrency(globalDebt)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Créances patients globales</p>
-          </CardContent>
-        </Card>
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Top 3 Soins Fréquents</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-4 mt-1">
-              {topTreatments.length > 0 ? (
-                topTreatments.map((t, idx) => (
-                  <div key={idx} className="flex-1 p-2 bg-slate-50 rounded-md border flex flex-col items-center">
-                    <span className="text-xs font-bold text-primary uppercase">{t.name}</span>
-                    <span className="text-lg font-bold">{t.count}</span>
-                  </div>
-                ))
-              ) : (
-                <p className="text-xs text-muted-foreground italic">Pas encore de soins ce mois-ci</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+
+        <Link href="/admin/invoices?view=debts" className="block transition-transform hover:scale-[1.02] active:scale-[0.98]">
+          <Card className="bg-amber-50/30 border-amber-100">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-xs font-bold uppercase text-amber-700">Dettes Patients</CardTitle>
+              <Clock className="h-4 w-4 text-amber-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-black text-amber-700">{formatCurrency(globalDebt)}</div>
+              <p className="text-[10px] font-bold text-amber-600/70 mt-1 uppercase">Total à recouvrer</p>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-10">

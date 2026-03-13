@@ -12,7 +12,7 @@ export default function AdminLayout({
       <main className="flex-1 w-full bg-slate-50/50 min-h-screen">
         <header className="sticky top-0 z-30 flex h-16 items-center border-b bg-white/70 px-6 backdrop-blur-xl transition-all duration-300">
           <div className="flex items-center gap-4">
-            <SidebarTrigger className="hover:bg-slate-100 transition-colors" />
+            <SidebarTrigger id="sidebar-main-trigger" className="hover:bg-slate-100 transition-colors" />
             <div className="h-4 w-px bg-slate-200" />
             <div className="flex flex-col">
               <span className="text-sm font-bold text-slate-900 tracking-tight">DABIA Gestion</span>

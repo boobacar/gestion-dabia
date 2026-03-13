@@ -29,11 +29,24 @@ export async function adminCreateUser(formData: {
     return { error: authError.message };
   }
 
-  // 2. The profile is normally created via trigger, 
-  // but let's ensure it's there or update it if needed.
-  // The trigger 'on_auth_user_created' in supabase/migrations/20260312_create_profiles.sql
-  // should have handled this.
+  // 2. Manual Profile Creation (Redundancy)
+  // We do this because the DB trigger has been unreliable.
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .upsert({
+      id: authData.user.id,
+      email: formData.email,
+      first_name: formData.first_name,
+      last_name: formData.last_name,
+      role: formData.role,
+    });
 
+  if (profileError) {
+    console.error("Warning: Profile upsert failed, but Auth user created:", profileError);
+    // We return success anyway because the user IS in Auth, 
+    // but the UI might need a refresh or another manual fix for the profile.
+  }
+  
   revalidatePath("/admin/settings");
   return { success: true, user: authData.user };
 }
@@ -83,15 +96,53 @@ export async function adminUpdateUserRole(userId: string, role: string) {
 export async function adminListUsers() {
   const supabase = createAdminClient();
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .order("created_at", { ascending: false });
+  // 1. Get all users from Auth (The "Source of Truth")
+  const { data: { users: authUsers }, error: authError } = await supabase.auth.admin.listUsers();
 
-  if (error) {
-    console.error("Error listing users:", error);
-    return { error: error.message };
+  if (authError) {
+    console.error("Error listing Auth users:", authError);
+    return { error: authError.message };
   }
 
-  return { users: data };
+  // 2. Get all existing profiles
+  const { data: profiles, error: profileError } = await supabase
+    .from("profiles")
+    .select("*");
+
+  if (profileError) {
+    console.error("Error listing profiles:", profileError);
+    return { error: profileError.message };
+  }
+
+  // 3. Synchronize: Ensure every Auth user has a profile
+  const existingProfileIds = new Set(profiles.map(p => p.id));
+  const missingProfiles = authUsers.filter(u => !existingProfileIds.has(u.id));
+
+  if (missingProfiles.length > 0) {
+    console.log(`Syncing ${missingProfiles.length} missing profiles...`);
+    const newProfiles = missingProfiles.map(u => ({
+      id: u.id,
+      email: u.email!,
+      first_name: u.user_metadata?.first_name || "",
+      last_name: u.user_metadata?.last_name || "",
+      role: u.user_metadata?.role || "secretary",
+    }));
+
+    const { error: syncError } = await supabase
+      .from("profiles")
+      .insert(newProfiles);
+
+    if (syncError) {
+      console.error("Error during profile sync:", syncError);
+      // We continue anyway to show what we have, but keep an eye on this
+    } else {
+      // Re-fetch profiles to have the latest
+      const { data: updatedProfiles } = await supabase.from("profiles").select("*");
+      if (updatedProfiles) return { users: updatedProfiles.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) };
+    }
+  }
+
+  return { 
+    users: profiles.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) 
+  };
 }

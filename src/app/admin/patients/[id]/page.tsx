@@ -21,6 +21,8 @@ import { PatientDocuments } from "@/components/PatientDocuments";
 import { PatientInvoices } from "@/components/PatientInvoices";
 import { PatientPrescriptions } from "@/components/PatientPrescriptions";
 import { InteractiveOdontogram } from "@/components/InteractiveOdontogram";
+import { PatientAppointments } from "@/components/PatientAppointments";
+import { AppointmentRecord } from "@/app/admin/appointments/page";
 
 export default async function PatientProfilePage({
   params,
@@ -37,24 +39,40 @@ export default async function PatientProfilePage({
       : "dossier";
   const supabase = await createClient();
 
-  const { data: patient, error } = await supabase
-    .from("patients")
-    .select("*")
-    .eq("id", id)
-    .single();
+  // Parallel Data Fetching
+  const [
+    { data: patient, error },
+    { data: odontogramRecords },
+    { data: patientInvoices },
+    { data: patientPrescriptions },
+    { data: patientAppointments }
+  ] = await Promise.all([
+    supabase.from("patients").select("*").eq("id", id).single(),
+    supabase.from("odontogram_records").select("*").eq("patient_id", id).order("date_recorded", { ascending: false }),
+    supabase.from("invoices").select("*, insurance_companies(id, name)").eq("patient_id", id).order("created_at", { ascending: false }),
+    supabase.from("prescriptions").select("*").eq("patient_id", id).order("created_at", { ascending: false }),
+    supabase.from("appointments").select(`
+      id,
+      patient_id,
+      appointment_date,
+      duration_minutes,
+      status,
+      notes,
+      patients (
+        id,
+        first_name,
+        last_name,
+        patient_number,
+        phone_number
+      )
+    `).eq("patient_id", id).order("appointment_date", { ascending: false })
+  ]);
 
   if (error || !patient) {
     notFound();
   }
 
-  // Fetch initial odontogram state
-  const { data: odontogramRecords } = await supabase
-    .from("odontogram_records")
-    .select("*")
-    .eq("patient_id", id)
-    .order("date_recorded", { ascending: false });
-
-  // Get most recent unique records per tooth
+  // Process odontogram unique records
   const latestRecordsMap = new Map();
   if (odontogramRecords) {
     odontogramRecords.forEach((record) => {
@@ -64,20 +82,6 @@ export default async function PatientProfilePage({
     });
   }
   const initialOdontogramRecords = Array.from(latestRecordsMap.values());
-
-  // Fetch invoices for patient
-  const { data: patientInvoices } = await supabase
-    .from("invoices")
-    .select("*")
-    .eq("patient_id", id)
-    .order("created_at", { ascending: false });
-
-  // Fetch prescriptions for patient
-  const { data: patientPrescriptions } = await supabase
-    .from("prescriptions")
-    .select("*")
-    .eq("patient_id", id)
-    .order("created_at", { ascending: false });
 
   // Calculate age
   const age = patient.date_of_birth
@@ -215,14 +219,9 @@ export default async function PatientProfilePage({
         </TabsContent>
 
         <TabsContent value="appointments" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Historique des Rendez-vous</CardTitle>
-            </CardHeader>
-            <CardContent>
-               <p className="text-sm text-muted-foreground italic">Liste des rendez-vous à implémenter.</p>
-            </CardContent>
-          </Card>
+          <PatientAppointments 
+            appointments={(patientAppointments as unknown as AppointmentRecord[]) || []} 
+          />
         </TabsContent>
 
         <TabsContent value="documents" className="mt-6">

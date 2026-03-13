@@ -12,6 +12,8 @@ import {
   User2,
   LogOut,
   Loader2,
+  MessageSquare,
+  TrendingDown,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -39,16 +41,24 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 // Menu items.
-const items = [
+const items: {
+  title: string;
+  url: string;
+  icon: any;
+  adminOnly?: boolean;
+  staffOnly?: boolean;
+}[] = [
   {
     title: "Tableau de Bord",
     url: "/admin",
     icon: Home,
+    adminOnly: true,
   },
   {
     title: "Importation CSV",
     url: "/admin/import",
     icon: Inbox,
+    adminOnly: true,
   },
   {
     title: "Patients (DMP)",
@@ -64,6 +74,13 @@ const items = [
     title: "Factures & Devis",
     url: "/admin/invoices",
     icon: FileText,
+    adminOnly: true,
+  },
+  {
+    title: "Dépenses",
+    url: "/admin/expenses",
+    icon: TrendingDown,
+    adminOnly: true,
   },
   {
     title: "Stocks",
@@ -74,10 +91,24 @@ const items = [
     title: "Paramètres",
     url: "/admin/settings",
     icon: Settings,
+    adminOnly: true,
+  },
+  {
+    title: "DABIA Connect",
+    url: "/admin/messages",
+    icon: MessageSquare,
+    adminOnly: true,
+  },
+  {
+    title: "WhatsApp Settings",
+    url: "/admin/settings/whatsapp",
+    icon: Settings,
+    adminOnly: true,
   },
 ];
 
 export function AppSidebar() {
+  const [isMounted, setIsMounted] = useState(false);
   const pathname = usePathname();
   const [user, setUser] = useState<unknown>(null);
   const [profile, setProfile] = useState<{ first_name: string; last_name: string; role: string } | null>(null);
@@ -100,6 +131,10 @@ export function AppSidebar() {
       setLoading(false);
     }
     getUser();
+  }, []);
+
+  useEffect(() => {
+    setIsMounted(true);
   }, []);
 
   const handleLogout = async () => {
@@ -140,7 +175,13 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu className="gap-1">
-              {items.map((item) => {
+              {items
+                .filter(item => {
+                  if (item.adminOnly) return profile?.role === "admin";
+                  if (item.staffOnly) return profile?.role === "admin" || profile?.role === "dentist";
+                  return true;
+                })
+                .map((item) => {
                 const isActive =
                   item.url === "/admin"
                     ? pathname === "/admin"
@@ -149,6 +190,7 @@ export function AppSidebar() {
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton
+                      id={`menu-${item.title.toLowerCase().replace(/\s+/g, '-')}`}
                       isActive={isActive}
                       tooltip={item.title}
                       render={
@@ -181,7 +223,10 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="p-4">
-        <DropdownMenu>
+        {!isMounted ? (
+          <div className="h-12 w-full animate-pulse bg-slate-50 rounded-xl" />
+        ) : (
+          <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100 text-left group">
               <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
@@ -222,7 +267,8 @@ export function AppSidebar() {
               <span>Déconnexion</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
-        </DropdownMenu>
+          </DropdownMenu>
+        )}
       </SidebarFooter>
     </Sidebar>
   );

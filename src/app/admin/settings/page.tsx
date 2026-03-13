@@ -145,9 +145,10 @@ export default function SettingsPage() {
     fetchData();
   }, [supabase]);
 
-  async function refreshUsers() {
+  const refreshUsers = async () => {
     setAdminLoading(true);
     const res = await adminListUsers();
+    console.log("CLIENT DEBUG: refreshUsers response:", res);
     if (res.users) setUsers(res.users);
     if (res.error) toast.error(res.error);
     setAdminLoading(false);
@@ -646,7 +647,9 @@ export default function SettingsPage() {
                 <Card className="border-none shadow-sm bg-white overflow-hidden">
                   <CardHeader className="pb-6 border-b border-slate-50 flex flex-row items-center justify-between space-y-0">
                     <div>
-                      <CardTitle className="text-xl font-black text-slate-900">Équipe Clinique</CardTitle>
+                      <CardTitle className="text-xl font-black text-slate-900">
+                        Équipe Clinique ({users.length})
+                      </CardTitle>
                       <CardDescription className="text-slate-500 font-medium">
                         Liste de tous les membres ayant accès à la plateforme.
                       </CardDescription>

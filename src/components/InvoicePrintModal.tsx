@@ -4,7 +4,7 @@ import React, { useRef } from "react";
 import { useReactToPrint } from "react-to-print";
 import { InvoiceRecord } from "@/components/PatientInvoices";
 import { Button } from "@/components/ui/button";
-import { Download, FileText, Printer } from "lucide-react";
+import { Download, FileText, Printer, Send } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   Dialog,
@@ -14,6 +14,10 @@ import {
 } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
+import jsPDF from "jspdf";
+import { toJpeg } from "html-to-image";
+import { sendInvoiceWhatsApp } from "@/app/actions/whatsapp";
+import { toast } from "sonner";
 
 interface InvoicePrintModalProps {
   invoice: InvoiceRecord;
@@ -60,6 +64,60 @@ export function InvoicePrintModal({
       "ddMMyyyy",
     )}`,
   });
+ 
+  const [isSendingWA, setIsSendingWA] = React.useState(false);
+
+  const handleWhatsAppSend = async () => {
+    if (!componentRef.current || !patientPhone) {
+      toast.error("Numéro de téléphone manquant ou erreur d'aperçu");
+      return;
+    }
+
+    setIsSendingWA(true);
+    const toastId = toast.loading("Génération du PDF et envoi...");
+
+    try {
+      // 1. Capture the element using html-to-image (Better support for OKLCH/Modern CSS)
+      const element = componentRef.current;
+      const imgData = await toJpeg(element, {
+        pixelRatio: 2,
+        backgroundColor: "white",
+        cacheBust: true,
+        quality: 0.8,
+      });
+      
+      // 2. Create PDF
+      const pdf = new jsPDF("p", "mm", "a4");
+      const imgProps = pdf.getImageProperties(imgData);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      
+      pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
+      
+      // 3. Get Base64
+      const pdfBase64 = pdf.output("datauristring").split(",")[1];
+      const fileName = `Facture_${patientName.replace(/\s+/g, "_")}.pdf`;
+
+      // 4. Send via Server Action
+      const res = await sendInvoiceWhatsApp(
+        patientPhone,
+        pdfBase64,
+        fileName,
+        invoice.patient_id as string
+      );
+
+      if (res.success) {
+        toast.success("Facture envoyée sur WhatsApp !", { id: toastId });
+      } else {
+        toast.error(res.error || "Erreur lors de l'envoi", { id: toastId });
+      }
+    } catch (err) {
+      console.error("PDF/WA Error:", err);
+      toast.error("Échec de la génération ou de l'envoi", { id: toastId });
+    } finally {
+      setIsSendingWA(false);
+    }
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("fr-SN", {
@@ -68,7 +126,6 @@ export function InvoicePrintModal({
     }).format(amount);
   };
 
-  const remaining = invoice.total_amount - (invoice.paid_amount || 0);
 
   return (
     <Dialog>
@@ -94,6 +151,15 @@ export function InvoicePrintModal({
             <Printer className="w-4 h-4" />
             Imprimer / PDF
           </Button>
+          <Button 
+            onClick={handleWhatsAppSend} 
+            disabled={isSendingWA}
+            variant="outline" 
+            className="gap-2 border-primary text-primary hover:bg-primary/5"
+          >
+            {isSendingWA ? <span className="animate-spin">🌀</span> : <Send className="w-4 h-4" />}
+            Envoyer par WhatsApp
+          </Button>
         </div>
 
         {/* The Printable Area */}
@@ -101,6 +167,7 @@ export function InvoicePrintModal({
           {/* A4 Container */}
           <div
             ref={componentRef}
+            id="invoice-printable-area"
             className="bg-white text-slate-900 w-[210mm] min-h-[297mm] p-[20mm] shadow-lg shrink-0 origin-top overflow-hidden"
             style={{
               fontFamily: "sans-serif",
@@ -154,11 +221,10 @@ export function InvoicePrintModal({
                 <p className="text-sm text-slate-600">
                   Téléphone : {patientPhone || "Non renseigné"}
                 </p>
-                {invoice.insurance_details && (
+                {(invoice.insurance_companies?.name || invoice.insurance_company_id) && (
                   <p className="text-sm text-primary font-medium mt-2">
                     Mutuelle :{" "}
-                    {(invoice.insurance_details as { provider?: string })
-                      ?.provider || "N/A"}
+                    {invoice.insurance_companies?.name || "Mutuelle"}
                   </p>
                 )}
               </div>
@@ -210,13 +276,18 @@ export function InvoicePrintModal({
               </table>
             </div>
 
-            {/* Totals */}
             <div className="flex justify-end mb-16">
               <div className="w-1/2">
                 <div className="flex justify-between py-2 text-slate-600">
                   <span>Sous-total:</span>
                   <span>{formatCurrency(invoice.total_amount)}</span>
                 </div>
+                {invoice.insurance_coverage_amount ? (
+                  <div className="flex justify-between py-2 text-blue-600 font-medium">
+                    <span>Prise en charge mutuelle:</span>
+                    <span>- {formatCurrency(invoice.insurance_coverage_amount)}</span>
+                  </div>
+                ) : null}
                 <div className="flex justify-between py-2 text-slate-600">
                   <span>Acompte versé:</span>
                   <span className="text-green-600">
@@ -227,10 +298,14 @@ export function InvoicePrintModal({
                   <span>Reste à payer:</span>
                   <span
                     className={
-                      remaining > 0 ? "text-amber-600" : "text-green-600"
+                      (invoice.total_amount - (invoice.paid_amount || 0) - (invoice.insurance_coverage_amount || 0)) > 0 
+                      ? "text-amber-600" 
+                      : "text-green-600"
                     }
                   >
-                    {formatCurrency(remaining)}
+                    {formatCurrency(
+                      invoice.total_amount - (invoice.paid_amount || 0) - (invoice.insurance_coverage_amount || 0)
+                    )}
                   </span>
                 </div>
               </div>

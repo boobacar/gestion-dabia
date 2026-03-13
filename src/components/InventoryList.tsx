@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 export const INVENTORY_CATEGORIES = [
   "Anesthésie & Seringues",
@@ -118,7 +119,6 @@ export function InventoryList({ initialData }: InventoryListProps) {
 
     try {
       if (editingItem) {
-        // Update existing mapping
         const { data, error } = await supabase
           .from("inventory")
           .update(payload)
@@ -130,7 +130,6 @@ export function InventoryList({ initialData }: InventoryListProps) {
         setItems(items.map((i) => (i.id === editingItem.id ? data : i)));
         toast.success("Article mis à jour.");
       } else {
-        // Create new item
         const { data, error } = await supabase
           .from("inventory")
           .insert(payload)
@@ -142,7 +141,7 @@ export function InventoryList({ initialData }: InventoryListProps) {
         toast.success("Nouvel article ajouté au stock.");
       }
       setIsDialogOpen(false);
-      router.refresh(); // Refresh page metrics
+      router.refresh();
     } catch (err: unknown) {
       const errMsg =
         err instanceof Error ? err.message : "Une erreur est survenue";
@@ -172,12 +171,12 @@ export function InventoryList({ initialData }: InventoryListProps) {
   };
 
   const handleDelete = async (item: InventoryItem) => {
-    if (!confirm(`T'es sur que tu veux supprimer "${item.item_name}" ?`)) return;
+    if (!confirm(`Confirmer la suppression de "${item.item_name}" ?`)) return;
     try {
       const { error } = await supabase.from("inventory").delete().eq("id", item.id);
       if (error) throw error;
       setItems(items.filter((i) => i.id !== item.id));
-      toast.success("Article supprimé de l'inventaire.");
+      toast.success("Article supprimé.");
       router.refresh();
     } catch (err) {
       console.error(err);
@@ -194,13 +193,13 @@ export function InventoryList({ initialData }: InventoryListProps) {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center bg-background px-4 py-2 border-b -mx-6 -mt-6 rounded-t-xl mb-4">
-        <div className="relative w-64">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/50 p-4 border-b border-slate-100">
+        <div className="relative w-full md:w-80">
+          <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
           <Input
             placeholder="Rechercher un composant..."
-            className="pl-8"
+            className="pl-10 h-10 bg-white shadow-sm border-slate-200 focus-visible:ring-primary/20"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -209,30 +208,31 @@ export function InventoryList({ initialData }: InventoryListProps) {
           <DialogTrigger
             render={
               <Button
-                size="sm"
-                className="inline-flex h-9"
+                className="h-10 bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20"
                 onClick={() => handleOpenDialog()}
               >
                 <Plus className="w-4 h-4 mr-2" /> Nouveau Produit
               </Button>
             }
           />
-          <DialogContent>
+          <DialogContent className="max-w-md">
             <form onSubmit={handleSubmit}>
               <DialogHeader>
-                <DialogTitle>
-                  {editingItem ? "Modifier l'article" : "Ajouter au stock"}
+                <DialogTitle className="text-xl font-bold font-outfit">
+                  {editingItem ? "Modifier l'article" : "Nouveau Produit"}
                 </DialogTitle>
                 <DialogDescription>
-                  Remplissez les détails du produit consomable.
+                  Détails du consommable médical ou fourniture.
                 </DialogDescription>
               </DialogHeader>
-              <div className="py-4 space-y-4">
+              <div className="py-6 space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="item_name">Nom du Produit</Label>
+                  <Label htmlFor="item_name" className="text-xs font-black uppercase tracking-wider text-slate-500">Nom du Produit</Label>
                   <Input
                     id="item_name"
                     required
+                    placeholder="Ex: Gants examen, Composite A2..."
+                    className="h-10 border-slate-200"
                     value={formData.item_name}
                     onChange={(e) =>
                       setFormData({ ...formData, item_name: e.target.value })
@@ -240,15 +240,15 @@ export function InventoryList({ initialData }: InventoryListProps) {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="category">Catégorie</Label>
+                  <Label htmlFor="category" className="text-xs font-black uppercase tracking-wider text-slate-500">Catégorie</Label>
                   <Select
-                    value={formData.category ? formData.category : ""}
+                    value={formData.category ? formData.category : "Autre"}
                     onValueChange={(val) =>
-                      setFormData({ ...formData, category: val || "" })
+                      setFormData({ ...formData, category: val || "Autre" })
                     }
                   >
-                    <SelectTrigger id="category">
-                      <SelectValue placeholder="Sélectionnez une catégorie..." />
+                    <SelectTrigger id="category" className="h-10 border-slate-200">
+                      <SelectValue placeholder="Sélectionnez..." />
                     </SelectTrigger>
                     <SelectContent>
                       {INVENTORY_CATEGORIES.map((cat) => (
@@ -261,12 +261,13 @@ export function InventoryList({ initialData }: InventoryListProps) {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="quantity">Quantité en stock</Label>
+                    <Label htmlFor="quantity" className="text-xs font-black uppercase tracking-wider text-slate-500">Stock Initial</Label>
                     <Input
                       id="quantity"
                       type="number"
                       required
                       min="0"
+                      className="h-10 border-slate-200"
                       value={formData.quantity_in_stock}
                       onChange={(e) =>
                         setFormData({
@@ -277,12 +278,13 @@ export function InventoryList({ initialData }: InventoryListProps) {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="critical">Seuil critique (Alerte)</Label>
+                    <Label htmlFor="critical" className="text-xs font-black uppercase tracking-wider text-amber-600">Seuil d&apos;Alerte</Label>
                     <Input
                       id="critical"
                       type="number"
                       required
                       min="1"
+                      className="h-10 border-slate-200 focus-visible:ring-amber-200"
                       value={formData.critical_threshold}
                       onChange={(e) =>
                         setFormData({
@@ -294,11 +296,12 @@ export function InventoryList({ initialData }: InventoryListProps) {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="unit_price">Prix Unitaire (FCFA)</Label>
+                  <Label htmlFor="unit_price" className="text-xs font-black uppercase tracking-wider text-slate-500">Prix Unitaire (FCFA)</Label>
                   <Input
                     id="unit_price"
                     type="number"
                     min="0"
+                    className="h-10 border-slate-200"
                     value={formData.unit_price}
                     onChange={(e) =>
                       setFormData({
@@ -312,13 +315,14 @@ export function InventoryList({ initialData }: InventoryListProps) {
               <DialogFooter>
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
+                  className="font-bold text-slate-500"
                   onClick={() => setIsDialogOpen(false)}
                 >
                   Annuler
                 </Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Enregistrement..." : "Enregistrer"}
+                <Button type="submit" disabled={isSubmitting} className="px-6 font-bold shadow-lg shadow-primary/20">
+                  {isSubmitting ? "Enregistrement..." : "Enregistrer le produit"}
                 </Button>
               </DialogFooter>
             </form>
@@ -326,107 +330,98 @@ export function InventoryList({ initialData }: InventoryListProps) {
         </Dialog>
       </div>
 
-      <div className="relative w-full overflow-auto">
-        <table className="w-full caption-bottom text-sm">
-          <thead className="[&_tr]:border-b">
-            <tr className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
-              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                Article
-              </th>
-              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                Catégorie
-              </th>
-              <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground">
-                Stock Dispo.
-              </th>
-              <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
-                Valeur Totale
-              </th>
-              <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
-                Dernier réassort
-              </th>
-              <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
-                Actions
-              </th>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-slate-50/50 border-b border-slate-100 pb-2">
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Article</th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Catégorie</th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Stock Dispo.</th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Valeur Totale</th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Dernier réassort</th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Outils</th>
             </tr>
           </thead>
-          <tbody className="[&_tr:last-child]:border-0">
+          <tbody className="divide-y divide-slate-100">
             {filteredItems.map((item) => {
-              const isCritical =
-                item.quantity_in_stock <= item.critical_threshold;
+              const isCritical = item.quantity_in_stock <= item.critical_threshold;
               return (
                 <tr
                   key={item.id}
-                  className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
+                  className="hover:bg-slate-50/80 transition-all duration-200 group"
                 >
-                  <td className="p-4 align-middle font-medium">
+                  <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
-                      {item.item_name}
+                      <span className="font-bold text-slate-900 group-hover:text-primary transition-colors">{item.item_name}</span>
                       {isCritical && (
-                        <span title="Stock critique!">
-                          <AlertCircle className="w-3 h-3 text-red-500" />
+                        <span className="bg-rose-50 text-rose-500 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter flex items-center gap-1 border border-rose-100 animate-pulse">
+                          <AlertCircle className="w-2.5 h-2.5" /> Bas
                         </span>
                       )}
                     </div>
                   </td>
-                  <td className="p-4 align-middle text-muted-foreground">
-                    {item.category || "-"}
+                  <td className="px-6 py-4">
+                    <span className="text-xs font-medium text-slate-500 uppercase tracking-tight">{item.category || "Général"}</span>
                   </td>
-                  <td className="p-4 align-middle text-center">
+                  <td className="px-6 py-4">
                     <div className="flex items-center justify-center gap-2">
                       <Button
-                        variant="outline"
+                        variant="ghost"
                         size="icon"
-                        className="h-6 w-6"
+                        className="h-7 w-7 rounded-full hover:bg-rose-50 hover:text-rose-600 text-slate-400 border border-transparent hover:border-rose-100 transition-all"
                         onClick={() => handleQuickAdjust(item, -1)}
                       >
                         <Minus className="w-3 h-3" />
                       </Button>
                       <span
-                        className={`px-2 py-1 rounded-full text-sm font-medium min-w-12 text-center ${
+                        className={cn(
+                          "px-3 py-1 rounded-lg text-sm font-black min-w-12 text-center border shadow-sm",
                           isCritical
-                            ? "bg-red-100 text-red-800"
-                            : "bg-green-100 text-green-800"
-                        }`}
+                            ? "bg-rose-50 text-rose-600 border-rose-100"
+                            : "bg-emerald-50 text-emerald-600 border-emerald-100"
+                        )}
                       >
                         {item.quantity_in_stock}
                       </span>
                       <Button
-                        variant="outline"
+                        variant="ghost"
                         size="icon"
-                        className="h-6 w-6"
+                        className="h-7 w-7 rounded-full hover:bg-emerald-50 hover:text-emerald-600 text-slate-400 border border-transparent hover:border-emerald-100 transition-all"
                         onClick={() => handleQuickAdjust(item, 1)}
                       >
                         <Plus className="w-3 h-3" />
                       </Button>
                     </div>
                   </td>
-                  <td className="p-4 align-middle text-right font-medium">
-                    {formatCurrency(item.quantity_in_stock * (item.unit_price || 0))}
+                  <td className="px-6 py-4 text-right">
+                    <span className="font-black text-slate-900">{formatCurrency(item.quantity_in_stock * (item.unit_price || 0))}</span>
                   </td>
-                  <td className="p-4 align-middle text-right text-muted-foreground text-xs">
+                  <td className="px-6 py-4 text-right">
+                    <span className="text-[11px] font-medium text-slate-400 uppercase">
                     {item.last_restocked
                       ? format(new Date(item.last_restocked), "dd MMM yyyy", {
                           locale: fr,
                         })
-                      : "Inconnu"}
+                      : "-"}
+                    </span>
                   </td>
-                  <td className="p-4 align-middle text-right">
-                    <div className="flex justify-end gap-1">
+                  <td className="px-6 py-4">
+                    <div className="flex justify-end items-center gap-1 opacity-40 group-hover:opacity-100 transition-opacity">
                       <Button
                         variant="ghost"
                         size="icon"
+                        className="h-8 w-8 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg"
                         onClick={() => handleOpenDialog(item)}
                       >
-                        <Edit2 className="w-4 h-4 text-slate-500" />
+                        <Edit2 className="w-4 h-4" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
+                        className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
                         onClick={() => handleDelete(item)}
-                        title="Supprimer"
                       >
-                        <Trash2 className="w-4 h-4 text-red-500 hover:text-red-700" />
+                        <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
                   </td>
@@ -436,10 +431,10 @@ export function InventoryList({ initialData }: InventoryListProps) {
             {filteredItems.length === 0 && (
               <tr>
                 <td
-                  colSpan={5}
-                  className="p-8 text-center text-muted-foreground"
+                  colSpan={6}
+                  className="px-6 py-12 text-center text-slate-400 italic"
                 >
-                  Aucun article trouvé.
+                  Aucun article trouvé dans l&apos;inventaire.
                 </td>
               </tr>
             )}

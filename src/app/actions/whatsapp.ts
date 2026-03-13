@@ -5,9 +5,26 @@ import { WhatsAppTemplates, standardizePhoneNumber } from "@/lib/whatsapp/templa
 import { whatsappManager } from "@/lib/whatsapp/manager";
 import { revalidatePath } from "next/cache";
 
+const BRIDGE_URL = process.env.NEXT_PUBLIC_WA_BRIDGE_URL;
+
+async function callBridge(endpoint: string, body?: any) {
+  if (!BRIDGE_URL) return null;
+  const res = await fetch(`${BRIDGE_URL}${endpoint}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function disconnectWhatsApp() {
   try {
-    await whatsappManager.logout();
+    if (BRIDGE_URL) {
+      await callBridge("/logout");
+    } else {
+      await whatsappManager.logout();
+    }
     revalidatePath("/admin/settings/whatsapp");
     return { success: true };
   } catch (error: unknown) {
@@ -19,8 +36,12 @@ export async function disconnectWhatsApp() {
 
 export async function sendTestMessage(to: string, message: string) {
   try {
-    await whatsappManager.init(); // Ensure initialized
-    await whatsappManager.sendMessage(to, message);
+    if (BRIDGE_URL) {
+      await callBridge("/send", { to, text: message });
+    } else {
+      await whatsappManager.init();
+      await whatsappManager.sendMessage(to, message);
+    }
     return { success: true };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
@@ -30,6 +51,15 @@ export async function sendTestMessage(to: string, message: string) {
 }
 
 export async function getWhatsAppStatus() {
+  if (BRIDGE_URL) {
+    try {
+      const res = await fetch(`${BRIDGE_URL}/status`);
+      const data = await res.json();
+      return data.status;
+    } catch {
+      return "error";
+    }
+  }
   return whatsappManager.getStatus();
 }
 
@@ -48,15 +78,18 @@ export async function sendDebtReminder(patientId: string, amount: number) {
       return { success: false, error: "Patient introuvable ou numéro manquant" };
     }
 
-    await whatsappManager.init();
-    
     // Standardize phone for Senegal if needed
     let phone = patient.phone_number.replace(/\D/g, "");
     if (phone.length === 9) phone = `221${phone}`;
 
     const message = `Bonjour ${patient.first_name} ${patient.last_name}, nous vous rappelons qu'il reste un solde de ${amount.toLocaleString('fr-FR')} F CFA à régler pour vos derniers soins à la Clinique DABIA. Merci de passer à la caisse lors de votre prochain passage. 🦷`;
 
-    await whatsappManager.sendMessage(phone, message);
+    if (BRIDGE_URL) {
+      await callBridge("/send", { to: phone, text: message });
+    } else {
+      await whatsappManager.init();
+      await whatsappManager.sendMessage(phone, message);
+    }
     
     // Log the success
     await logWhatsAppMessage({
@@ -148,8 +181,12 @@ export async function deleteWhatsAppLog(id: string) {
 }
 export async function sendWhatsAppNotification(to: string, message: string, patientId?: string, category: "confirmation" | "reminder" | "debt_relance" = "confirmation") {
   try {
-    await whatsappManager.init();
-    await whatsappManager.sendMessage(to, message);
+    if (BRIDGE_URL) {
+      await callBridge("/send", { to, text: message });
+    } else {
+      await whatsappManager.init();
+      await whatsappManager.sendMessage(to, message);
+    }
     
     await logWhatsAppMessage({
       patient_id: patientId,
@@ -232,12 +269,21 @@ export async function sendInvoiceWhatsApp(
   try {
     const buffer = Buffer.from(pdfBase64, 'base64');
     
-    await whatsappManager.sendDocument(
-      patientPhone, 
-      buffer, 
-      fileName, 
-      "Votre facture de la Clinique DABIA 🦷"
-    );
+    if (BRIDGE_URL) {
+      await callBridge("/send-document", { 
+        to: patientPhone, 
+        pdfBase64, 
+        fileName, 
+        caption: "Votre facture de la Clinique DABIA 🦷" 
+      });
+    } else {
+      await whatsappManager.sendDocument(
+        patientPhone, 
+        buffer, 
+        fileName, 
+        "Votre facture de la Clinique DABIA 🦷"
+      );
+    }
 
     await logWhatsAppMessage({
       patient_id: patientId,

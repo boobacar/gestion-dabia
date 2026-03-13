@@ -181,19 +181,25 @@ export function InteractiveOdontogram({
         const label = conditionConfig ? conditionConfig.label : conditionValue;
         
         // Try to find price in catalog first, then fallback to hardcoded
-        const catalogItem = catalog.find(t => t.name.toLowerCase().includes(label.toLowerCase()) || label.toLowerCase().includes(t.name.toLowerCase()));
+        const catalogItem = catalog.find(t => 
+          t.name.toLowerCase().includes(label.toLowerCase()) || 
+          label.toLowerCase().includes(t.name.toLowerCase())
+        );
+        
         const price = catalogItem ? catalogItem.price : (CONDITION_PRICES[conditionValue] || 0);
+        const category = catalogItem ? catalogItem.category : "Soins Dentaires";
 
         return {
           tooth_number: parseInt(toothString),
           condition: label,
-          price: price
+          price: price,
+          category: category
         };
       });
 
       const totalAmount = invoiceItems.reduce((acc, item) => acc + item.price, 0);
 
-      const { error } = await supabase
+      const { data: newInvoice, error } = await supabase
         .from("invoices")
         .insert({
           patient_id: patientId,
@@ -201,21 +207,27 @@ export function InteractiveOdontogram({
           paid_amount: 0,
           status: "pending",
           invoice_items: invoiceItems,
+          insurance_coverage_amount: 0,
+          created_at: new Date().toISOString()
         })
         .select()
         .single();
 
-      if (error) throw error;
-
-      router.refresh();
+      if (error) {
+        console.error("Supabase Error Details:", error);
+        throw new Error(error.message);
+      }
 
       toast.success(
-        `Devis généré avec succès (${new Intl.NumberFormat("fr-SN", { style: "currency", currency: "XOF" }).format(totalAmount)}) ! Allez dans l'onglet Facturation pour le voir.`
+        `Devis généré avec succès (${new Intl.NumberFormat("fr-SN", { style: "currency", currency: "XOF", maximumFractionDigits: 0 }).format(totalAmount)}) !`
       );
+      
+      router.refresh();
+      setSelectedTooth(null);
     } catch (error: unknown) {
       const errMsg = error instanceof Error ? error.message : "Erreur inconnue";
-      toast.error("Erreur lors de la création de la facture: " + errMsg);
-      console.error(errMsg);
+      toast.error("Échec de la génération: " + errMsg);
+      console.error("Invoice Generation Failed:", error);
     } finally {
       setIsGeneratingInvoice(false);
     }

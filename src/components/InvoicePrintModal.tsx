@@ -143,23 +143,32 @@ export function InvoicePrintModal({
       />
       <DialogContent className="max-w-[95vw] sm:max-w-[250mm] max-h-[90vh] overflow-y-auto w-full p-4 sm:p-6">
         <DialogTitle className="sr-only">Aperçu de la facture</DialogTitle>
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-wrap justify-between items-center gap-2 mb-6">
           <h2 className="text-xl font-bold flex items-center gap-2">
             <FileText className="w-5 h-5" /> Aperçu avant impression
           </h2>
-          <Button onClick={handlePrint} className="gap-2">
-            <Printer className="w-4 h-4" />
-            Imprimer / PDF
-          </Button>
-          <Button 
-            onClick={handleWhatsAppSend} 
-            disabled={isSendingWA}
-            variant="outline" 
-            className="gap-2 border-primary text-primary hover:bg-primary/5"
-          >
-            {isSendingWA ? <span className="animate-spin">🌀</span> : <Send className="w-4 h-4" />}
-            Envoyer par WhatsApp
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href={`/api/pdfbin/invoice/${invoice.id}`}
+              className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-slate-50"
+            >
+              <Download className="w-4 h-4" />
+              Télécharger PDF
+            </a>
+            <Button onClick={handlePrint} className="gap-2">
+              <Printer className="w-4 h-4" />
+              Imprimer / PDF
+            </Button>
+            <Button
+              onClick={handleWhatsAppSend}
+              disabled={isSendingWA}
+              variant="outline"
+              className="gap-2 border-primary text-primary hover:bg-primary/5"
+            >
+              {isSendingWA ? <span className="animate-spin">🌀</span> : <Send className="w-4 h-4" />}
+              Envoyer par WhatsApp
+            </Button>
+          </div>
         </div>
 
         {/* The Printable Area */}

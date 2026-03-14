@@ -14,6 +14,7 @@ import {
   Loader2,
   MessageSquare,
   TrendingDown,
+  Download,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -80,6 +81,12 @@ const items: {
     title: "Dépenses",
     url: "/admin/expenses",
     icon: TrendingDown,
+    adminOnly: true,
+  },
+  {
+    title: "Exportations",
+    url: "/admin/exports",
+    icon: Download,
     adminOnly: true,
   },
   {

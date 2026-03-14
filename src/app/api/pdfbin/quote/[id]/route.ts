@@ -1,0 +1,63 @@
+import { buildSimplePdf } from "@/lib/pdf/simple";
+import { createClient } from "@/lib/supabase/server";
+import { NextResponse } from "next/server";
+
+export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { data: invoice, error } = await supabase
+    .from("invoices")
+    .select("*, patients(*), insurance_companies(*)")
+    .eq("id", id)
+    .single();
+
+  if (error || !invoice) {
+    return NextResponse.json({ error: "Devis introuvable" }, { status: 404 });
+  }
+
+  const { data: clinicSettings } = await supabase
+    .from("clinic_settings")
+    .select("*")
+    .single();
+
+  const patientName = invoice.patients
+    ? `${invoice.patients.first_name || ""} ${invoice.patients.last_name || ""}`.trim()
+    : "Patient";
+
+  const total = Number(invoice.total_amount || 0);
+  const lines = [
+    `Date: ${new Date(invoice.created_at).toLocaleDateString("fr-FR")}`,
+    clinicSettings?.address ? `Adresse clinique: ${clinicSettings.address}` : "",
+    clinicSettings?.phone ? `Téléphone clinique: ${clinicSettings.phone}` : "",
+    clinicSettings?.email ? `Email clinique: ${clinicSettings.email}` : "",
+    "",
+    `Patient: ${patientName}`,
+    invoice.patients?.phone_number ? `Téléphone patient: ${invoice.patients.phone_number}` : "",
+    invoice.insurance_companies?.name ? `Mutuelle: ${invoice.insurance_companies.name}` : "",
+    "",
+    `Montant devis: ${total} FCFA`,
+    invoice.notes ? `Notes: ${invoice.notes}` : "",
+    "",
+    "Téléchargé depuis Gestion DABIA",
+  ].filter(Boolean);
+
+  const title = `${clinicSettings?.name || "Clinique DABIA"} - Devis`;
+  const bytes = await buildSimplePdf(title, lines);
+  const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+
+  return new NextResponse(ab, {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="devis-${String(invoice.id).slice(0, 8)}.pdf"`,
+    },
+  });
+}

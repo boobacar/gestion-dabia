@@ -36,9 +36,13 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const total = Number(invoice.total_amount || 0);
   const lines = [
     `Date: ${new Date(invoice.created_at).toLocaleDateString("fr-FR")}`,
+    clinicSettings?.specialty ? `Spécialité: ${clinicSettings.specialty}` : "",
     clinicSettings?.address ? `Adresse clinique: ${clinicSettings.address}` : "",
     clinicSettings?.phone ? `Téléphone clinique: ${clinicSettings.phone}` : "",
     clinicSettings?.email ? `Email clinique: ${clinicSettings.email}` : "",
+    clinicSettings?.ninea ? `NINEA: ${clinicSettings.ninea}` : "",
+    clinicSettings?.rc_number ? `RC: ${clinicSettings.rc_number}` : "",
+    clinicSettings?.legal_status ? `Statut juridique: ${clinicSettings.legal_status}` : "",
     "",
     `Patient: ${patientName}`,
     invoice.patients?.phone_number ? `Téléphone patient: ${invoice.patients.phone_number}` : "",

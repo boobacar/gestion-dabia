@@ -67,6 +67,7 @@ export function InvoicePrintModal({
  
   const [isSendingWA, setIsSendingWA] = React.useState(false);
   const [isLinkingDoc, setIsLinkingDoc] = React.useState(false);
+  const [isLinkingQuoteDoc, setIsLinkingQuoteDoc] = React.useState(false);
 
   const handleWhatsAppSend = async () => {
     if (!componentRef.current || !patientPhone) {
@@ -137,6 +138,23 @@ export function InvoicePrintModal({
     }
   };
 
+  const handleAddQuoteToDocuments = async () => {
+    setIsLinkingQuoteDoc(true);
+    const toastId = toast.loading("Ajout du devis en cours...");
+    try {
+      const res = await fetch(`/api/documents/from-quote/${invoice.id}`, {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Erreur inconnue");
+      toast.success("Devis ajouté aux documents du patient", { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Échec ajout devis", { id: toastId });
+    } finally {
+      setIsLinkingQuoteDoc(false);
+    }
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("fr-SN", {
       style: "currency",
@@ -187,7 +205,16 @@ export function InvoicePrintModal({
               disabled={isLinkingDoc}
             >
               <FileText className="w-4 h-4" />
-              {isLinkingDoc ? "Ajout..." : "Ajouter aux documents"}
+              {isLinkingDoc ? "Ajout..." : "Ajouter facture aux documents"}
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={handleAddQuoteToDocuments}
+              disabled={isLinkingQuoteDoc}
+            >
+              <FileText className="w-4 h-4" />
+              {isLinkingQuoteDoc ? "Ajout..." : "Ajouter devis aux documents"}
             </Button>
             <Button onClick={handlePrint} className="gap-2">
               <Printer className="w-4 h-4" />

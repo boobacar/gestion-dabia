@@ -1,6 +1,29 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
+type NamedEntity = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+};
+
+type AppointmentRef = {
+  id: string;
+  patient_id: string | null;
+  dentist_id: string | null;
+};
+
+type InvoiceRef = {
+  id: string;
+  patient_id: string | null;
+  appointment_id: string | null;
+};
+
+function fullName(entity?: NamedEntity | null) {
+  if (!entity) return "";
+  return [entity.first_name, entity.last_name].filter(Boolean).join(" ").trim();
+}
+
 function toCsv(rows: Record<string, unknown>[]) {
   if (!rows.length) return "";
   const headers = Array.from(new Set(rows.flatMap((r) => Object.keys(r))));
@@ -37,21 +60,75 @@ export async function GET() {
   const auth = await ensureAdmin();
   if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: auth.status });
 
-  const [invoicesRes, paymentsRes, expensesRes] = await Promise.all([
+  const [invoicesRes, paymentsRes, expensesRes, patientsRes, profilesRes, appointmentsRes] = await Promise.all([
     auth.supabase.from("invoices").select("*").limit(5000),
     auth.supabase.from("payments").select("*").limit(5000),
     auth.supabase.from("expenses").select("*").limit(5000),
+    auth.supabase.from("patients").select("id, first_name, last_name").limit(10000),
+    auth.supabase.from("profiles").select("id, first_name, last_name").limit(10000),
+    auth.supabase.from("appointments").select("id, patient_id, dentist_id").limit(10000),
   ]);
 
   if (invoicesRes.error) return NextResponse.json({ error: invoicesRes.error.message }, { status: 500 });
   if (paymentsRes.error) return NextResponse.json({ error: paymentsRes.error.message }, { status: 500 });
   if (expensesRes.error) return NextResponse.json({ error: expensesRes.error.message }, { status: 500 });
+  if (patientsRes.error) return NextResponse.json({ error: patientsRes.error.message }, { status: 500 });
+  if (profilesRes.error) return NextResponse.json({ error: profilesRes.error.message }, { status: 500 });
+  if (appointmentsRes.error) return NextResponse.json({ error: appointmentsRes.error.message }, { status: 500 });
 
-  const merged = [
-    ...(invoicesRes.data ?? []).map((r) => ({ section: "invoice", ...r })),
-    ...(paymentsRes.data ?? []).map((r) => ({ section: "payment", ...r })),
-    ...(expensesRes.data ?? []).map((r) => ({ section: "expense", ...r })),
-  ] as Record<string, unknown>[];
+  const patientsById = new Map((patientsRes.data ?? []).map((p) => [p.id, p]));
+  const profilesById = new Map((profilesRes.data ?? []).map((p) => [p.id, p]));
+  const appointmentsById = new Map((appointmentsRes.data ?? []).map((a) => [a.id, a as AppointmentRef]));
+  const invoicesById = new Map((invoicesRes.data ?? []).map((i) => [i.id, i as InvoiceRef]));
+
+  const invoices = (invoicesRes.data ?? []).map((row) => {
+    const invoice = row as InvoiceRef;
+    const appointment = invoice.appointment_id ? appointmentsById.get(invoice.appointment_id) : undefined;
+    const patient = invoice.patient_id ? patientsById.get(invoice.patient_id) : appointment?.patient_id ? patientsById.get(appointment.patient_id) : undefined;
+    const dentist = appointment?.dentist_id ? profilesById.get(appointment.dentist_id) : undefined;
+
+    return {
+      section: "invoice",
+      ...row,
+      patient_name: fullName(patient),
+      dentist_name: fullName(dentist),
+    };
+  });
+
+  const payments = (paymentsRes.data ?? []).map((row) => {
+    const payment = row as Record<string, unknown>;
+    const patientId = typeof payment.patient_id === "string" ? payment.patient_id : null;
+    const invoiceId = typeof payment.invoice_id === "string" ? payment.invoice_id : null;
+
+    const linkedInvoice = invoiceId ? invoicesById.get(invoiceId) : undefined;
+    const appointment = linkedInvoice?.appointment_id ? appointmentsById.get(linkedInvoice.appointment_id) : undefined;
+
+    const patient = patientId
+      ? patientsById.get(patientId)
+      : linkedInvoice?.patient_id
+        ? patientsById.get(linkedInvoice.patient_id)
+        : appointment?.patient_id
+          ? patientsById.get(appointment.patient_id)
+          : undefined;
+
+    const dentist = appointment?.dentist_id ? profilesById.get(appointment.dentist_id) : undefined;
+
+    return {
+      section: "payment",
+      ...row,
+      patient_name: fullName(patient),
+      dentist_name: fullName(dentist),
+    };
+  });
+
+  const expenses = (expensesRes.data ?? []).map((row) => ({
+    section: "expense",
+    ...row,
+    patient_name: "",
+    dentist_name: "",
+  }));
+
+  const merged = [...invoices, ...payments, ...expenses] as Record<string, unknown>[];
 
   const csv = toCsv(merged);
   return new NextResponse(csv, {

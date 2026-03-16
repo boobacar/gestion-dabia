@@ -1,6 +1,17 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
+type NamedEntity = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+};
+
+function fullName(entity?: NamedEntity | null) {
+  if (!entity) return "";
+  return [entity.first_name, entity.last_name].filter(Boolean).join(" ").trim();
+}
+
 function toCsv(rows: Record<string, unknown>[]) {
   if (!rows.length) return "";
   const headers = Array.from(new Set(rows.flatMap((r) => Object.keys(r))));
@@ -37,15 +48,35 @@ export async function GET() {
   const auth = await ensureAdmin();
   if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: auth.status });
 
-  const { data, error } = await auth.supabase
-    .from("appointments")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(5000);
+  const [appointmentsRes, patientsRes, profilesRes] = await Promise.all([
+    auth.supabase
+      .from("appointments")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(5000),
+    auth.supabase.from("patients").select("id, first_name, last_name").limit(10000),
+    auth.supabase.from("profiles").select("id, first_name, last_name").limit(10000),
+  ]);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (appointmentsRes.error) return NextResponse.json({ error: appointmentsRes.error.message }, { status: 500 });
+  if (patientsRes.error) return NextResponse.json({ error: patientsRes.error.message }, { status: 500 });
+  if (profilesRes.error) return NextResponse.json({ error: profilesRes.error.message }, { status: 500 });
 
-  const csv = toCsv((data ?? []) as Record<string, unknown>[]);
+  const patientsById = new Map((patientsRes.data ?? []).map((p) => [p.id, p]));
+  const profilesById = new Map((profilesRes.data ?? []).map((p) => [p.id, p]));
+
+  const enriched = (appointmentsRes.data ?? []).map((row) => {
+    const patient = row.patient_id ? patientsById.get(row.patient_id) : undefined;
+    const dentist = row.dentist_id ? profilesById.get(row.dentist_id) : undefined;
+
+    return {
+      ...row,
+      patient_name: fullName(patient),
+      dentist_name: fullName(dentist),
+    };
+  }) as Record<string, unknown>[];
+
+  const csv = toCsv(enriched);
   return new NextResponse(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",

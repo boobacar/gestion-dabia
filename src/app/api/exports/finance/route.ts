@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 
 type NamedEntity = {
@@ -60,13 +61,15 @@ export async function GET() {
   const auth = await ensureAdmin();
   if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: auth.status });
 
+  const admin = createAdminClient();
+
   const [invoicesRes, paymentsRes, expensesRes, patientsRes, profilesRes, appointmentsRes] = await Promise.all([
-    auth.supabase.from("invoices").select("*").limit(5000),
-    auth.supabase.from("payments").select("*").limit(5000),
-    auth.supabase.from("expenses").select("*").limit(5000),
-    auth.supabase.from("patients").select("id, first_name, last_name").limit(10000),
-    auth.supabase.from("profiles").select("id, first_name, last_name").limit(10000),
-    auth.supabase.from("appointments").select("id, patient_id, dentist_id").limit(10000),
+    admin.from("invoices").select("*").limit(5000),
+    admin.from("payments").select("*").limit(5000),
+    admin.from("expenses").select("*").limit(5000),
+    admin.from("patients").select("id, first_name, last_name").limit(10000),
+    admin.from("profiles").select("id, first_name, last_name").limit(10000),
+    admin.from("appointments").select("id, patient_id, dentist_id").limit(10000),
   ]);
 
   if (invoicesRes.error) return NextResponse.json({ error: invoicesRes.error.message }, { status: 500 });

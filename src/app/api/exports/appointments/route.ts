@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 
 type NamedEntity = {
@@ -48,14 +49,16 @@ export async function GET() {
   const auth = await ensureAdmin();
   if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: auth.status });
 
+  const admin = createAdminClient();
+
   const [appointmentsRes, patientsRes, profilesRes] = await Promise.all([
-    auth.supabase
+    admin
       .from("appointments")
       .select("*")
       .order("created_at", { ascending: false })
       .limit(5000),
-    auth.supabase.from("patients").select("id, first_name, last_name").limit(10000),
-    auth.supabase.from("profiles").select("id, first_name, last_name").limit(10000),
+    admin.from("patients").select("id, first_name, last_name").limit(10000),
+    admin.from("profiles").select("id, first_name, last_name").limit(10000),
   ]);
 
   if (appointmentsRes.error) return NextResponse.json({ error: appointmentsRes.error.message }, { status: 500 });

@@ -68,9 +68,52 @@ export function InvoicePrintModal({
   const [isSendingWA, setIsSendingWA] = React.useState(false);
   const [isLinkingDoc, setIsLinkingDoc] = React.useState(false);
   const [isLinkingQuoteDoc, setIsLinkingQuoteDoc] = React.useState(false);
+  const [isDownloadingInvoice, setIsDownloadingInvoice] = React.useState(false);
+  const [isDownloadingQuote, setIsDownloadingQuote] = React.useState(false);
+
+  const generatePreviewPdf = async () => {
+    if (!componentRef.current) {
+      throw new Error("Erreur d'aperçu PDF");
+    }
+
+    const element = componentRef.current;
+    const imgData = await toJpeg(element, {
+      pixelRatio: 2,
+      backgroundColor: "white",
+      cacheBust: true,
+      quality: 0.9,
+    });
+
+    const pdf = new jsPDF("p", "mm", "a4");
+    const imgProps = pdf.getImageProperties(imgData);
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+    pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
+    return pdf;
+  };
+
+  const downloadStyledPdf = async (kind: "invoice" | "quote") => {
+    const setLoading = kind === "invoice" ? setIsDownloadingInvoice : setIsDownloadingQuote;
+    setLoading(true);
+    try {
+      const pdf = await generatePreviewPdf();
+      const date = format(new Date(invoice.created_at), "ddMMyyyy");
+      const safeName = patientName.replace(/\s+/g, "_");
+      const fileName = kind === "invoice"
+        ? `Facture_${safeName}_${date}.pdf`
+        : `Devis_${safeName}_${date}.pdf`;
+      pdf.save(fileName);
+    } catch (err) {
+      console.error("PDF download error:", err);
+      toast.error("Échec du téléchargement PDF");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleWhatsAppSend = async () => {
-    if (!componentRef.current || !patientPhone) {
+    if (!patientPhone) {
       toast.error("Numéro de téléphone manquant ou erreur d'aperçu");
       return;
     }
@@ -79,28 +122,10 @@ export function InvoicePrintModal({
     const toastId = toast.loading("Génération du PDF et envoi...");
 
     try {
-      // 1. Capture the element using html-to-image (Better support for OKLCH/Modern CSS)
-      const element = componentRef.current;
-      const imgData = await toJpeg(element, {
-        pixelRatio: 2,
-        backgroundColor: "white",
-        cacheBust: true,
-        quality: 0.8,
-      });
-      
-      // 2. Create PDF
-      const pdf = new jsPDF("p", "mm", "a4");
-      const imgProps = pdf.getImageProperties(imgData);
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      
-      pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
-      
-      // 3. Get Base64
+      const pdf = await generatePreviewPdf();
       const pdfBase64 = pdf.output("datauristring").split(",")[1];
       const fileName = `Facture_${patientName.replace(/\s+/g, "_")}.pdf`;
 
-      // 4. Send via Server Action
       const res = await sendInvoiceWhatsApp(
         patientPhone,
         pdfBase64,
@@ -184,20 +209,24 @@ export function InvoicePrintModal({
             <FileText className="w-5 h-5" /> Aperçu avant impression
           </h2>
           <div className="flex flex-wrap gap-2">
-            <a
-              href={`/api/pdfbin/invoice/${invoice.id}`}
-              className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-slate-50"
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => downloadStyledPdf("invoice")}
+              disabled={isDownloadingInvoice}
             >
               <Download className="w-4 h-4" />
-              Télécharger Facture
-            </a>
-            <a
-              href={`/api/pdfbin/quote/${invoice.id}`}
-              className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-slate-50"
+              {isDownloadingInvoice ? "Téléchargement..." : "Télécharger Facture"}
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => downloadStyledPdf("quote")}
+              disabled={isDownloadingQuote}
             >
               <Download className="w-4 h-4" />
-              Télécharger Devis
-            </a>
+              {isDownloadingQuote ? "Téléchargement..." : "Télécharger Devis"}
+            </Button>
             <Button
               variant="outline"
               className="gap-2"

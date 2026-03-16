@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 
-export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
   const supabase = await createClient();
@@ -34,7 +35,34 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   }
 
   const fileName = `Facture_${String(invoice.id).slice(0, 8)}.pdf`;
-  const fileUrl = `/api/pdfbin/invoice/${invoice.id}`;
+
+  let fileUrl = `/api/pdfbin/invoice/${invoice.id}`;
+
+  try {
+    const body = await request.json().catch(() => null) as { pdfBase64?: string } | null;
+    if (body?.pdfBase64) {
+      const admin = createAdminClient();
+      const bytes = Buffer.from(body.pdfBase64, "base64");
+      const storagePath = `${invoice.patient_id}/${Date.now()}_invoice_${String(invoice.id).slice(0, 8)}.pdf`;
+
+      const { error: uploadError } = await admin.storage
+        .from("patient-documents")
+        .upload(storagePath, bytes, {
+          contentType: "application/pdf",
+          upsert: false,
+          cacheControl: "3600",
+        });
+
+      if (!uploadError) {
+        const { data: publicUrlData } = admin.storage
+          .from("patient-documents")
+          .getPublicUrl(storagePath);
+        fileUrl = publicUrlData.publicUrl;
+      }
+    }
+  } catch {
+    // fallback on server pdf endpoint
+  }
 
   const { error: insertError } = await supabase.from("documents").insert({
     patient_id: invoice.patient_id,

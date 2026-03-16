@@ -167,8 +167,14 @@ export function InvoicePrintModal({
     setIsLinkingQuoteDoc(true);
     const toastId = toast.loading("Ajout du devis en cours...");
     try {
+      const pdf = await generatePreviewPdf();
+      const blob = pdf.output("blob");
+      const pdfBase64 = await toBase64(blob);
+
       const res = await fetch(`/api/documents/from-quote/${invoice.id}`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pdfBase64 }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Erreur inconnue");

@@ -13,8 +13,9 @@ function fullName(entity?: NamedEntity | null) {
   return [entity.first_name, entity.last_name].filter(Boolean).join(" ").trim();
 }
 
-function normalizeId(value: unknown) {
-  return typeof value === "string" ? value.trim().toLowerCase() : "";
+function toOne<T>(value: T | T[] | null | undefined): T | null {
+  if (!value) return null;
+  return Array.isArray(value) ? (value[0] ?? null) : value;
 }
 
 function toCsv(rows: Record<string, unknown>[]) {
@@ -46,7 +47,7 @@ async function ensureAdmin() {
     .single();
 
   if (profile?.role !== "admin") return { ok: false as const, status: 403 };
-  return { ok: true as const, supabase };
+  return { ok: true as const };
 }
 
 export async function GET() {
@@ -55,26 +56,21 @@ export async function GET() {
 
   const admin = createAdminClient();
 
-  const [appointmentsRes, patientsRes, profilesRes] = await Promise.all([
-    admin
-      .from("appointments")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(5000),
-    admin.from("patients").select("id, first_name, last_name").limit(10000),
-    admin.from("profiles").select("id, first_name, last_name").limit(10000),
-  ]);
+  const { data, error } = await admin
+    .from("appointments")
+    .select(`
+      *,
+      patients:patient_id(id, first_name, last_name),
+      dentist_profile:dentist_id(id, first_name, last_name)
+    `)
+    .order("created_at", { ascending: false })
+    .limit(5000);
 
-  if (appointmentsRes.error) return NextResponse.json({ error: appointmentsRes.error.message }, { status: 500 });
-  if (patientsRes.error) return NextResponse.json({ error: patientsRes.error.message }, { status: 500 });
-  if (profilesRes.error) return NextResponse.json({ error: profilesRes.error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const patientsById = new Map((patientsRes.data ?? []).map((p) => [normalizeId(p.id), p]));
-  const profilesById = new Map((profilesRes.data ?? []).map((p) => [normalizeId(p.id), p]));
-
-  const enriched = (appointmentsRes.data ?? []).map((row) => {
-    const patient = patientsById.get(normalizeId(row.patient_id));
-    const dentist = profilesById.get(normalizeId(row.dentist_id));
+  const enriched = (data ?? []).map((row) => {
+    const patient = toOne(row.patients) as NamedEntity | null;
+    const dentist = toOne(row.dentist_profile) as NamedEntity | null;
 
     return {
       ...row,

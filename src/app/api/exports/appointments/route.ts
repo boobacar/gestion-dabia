@@ -13,6 +13,10 @@ function fullName(entity?: NamedEntity | null) {
   return [entity.first_name, entity.last_name].filter(Boolean).join(" ").trim();
 }
 
+function normalizeId(value: unknown) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
 function toCsv(rows: Record<string, unknown>[]) {
   if (!rows.length) return "";
   const headers = Array.from(new Set(rows.flatMap((r) => Object.keys(r))));
@@ -65,12 +69,12 @@ export async function GET() {
   if (patientsRes.error) return NextResponse.json({ error: patientsRes.error.message }, { status: 500 });
   if (profilesRes.error) return NextResponse.json({ error: profilesRes.error.message }, { status: 500 });
 
-  const patientsById = new Map((patientsRes.data ?? []).map((p) => [p.id, p]));
-  const profilesById = new Map((profilesRes.data ?? []).map((p) => [p.id, p]));
+  const patientsById = new Map((patientsRes.data ?? []).map((p) => [normalizeId(p.id), p]));
+  const profilesById = new Map((profilesRes.data ?? []).map((p) => [normalizeId(p.id), p]));
 
   const enriched = (appointmentsRes.data ?? []).map((row) => {
-    const patient = row.patient_id ? patientsById.get(row.patient_id) : undefined;
-    const dentist = row.dentist_id ? profilesById.get(row.dentist_id) : undefined;
+    const patient = patientsById.get(normalizeId(row.patient_id));
+    const dentist = profilesById.get(normalizeId(row.dentist_id));
 
     return {
       ...row,

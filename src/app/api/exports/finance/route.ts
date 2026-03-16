@@ -25,6 +25,10 @@ function fullName(entity?: NamedEntity | null) {
   return [entity.first_name, entity.last_name].filter(Boolean).join(" ").trim();
 }
 
+function normalizeId(value: unknown) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
 function toCsv(rows: Record<string, unknown>[]) {
   if (!rows.length) return "";
   const headers = Array.from(new Set(rows.flatMap((r) => Object.keys(r))));
@@ -79,16 +83,17 @@ export async function GET() {
   if (profilesRes.error) return NextResponse.json({ error: profilesRes.error.message }, { status: 500 });
   if (appointmentsRes.error) return NextResponse.json({ error: appointmentsRes.error.message }, { status: 500 });
 
-  const patientsById = new Map((patientsRes.data ?? []).map((p) => [p.id, p]));
-  const profilesById = new Map((profilesRes.data ?? []).map((p) => [p.id, p]));
-  const appointmentsById = new Map((appointmentsRes.data ?? []).map((a) => [a.id, a as AppointmentRef]));
-  const invoicesById = new Map((invoicesRes.data ?? []).map((i) => [i.id, i as InvoiceRef]));
+  const patientsById = new Map((patientsRes.data ?? []).map((p) => [normalizeId(p.id), p]));
+  const profilesById = new Map((profilesRes.data ?? []).map((p) => [normalizeId(p.id), p]));
+  const appointmentsById = new Map((appointmentsRes.data ?? []).map((a) => [normalizeId(a.id), a as AppointmentRef]));
+  const invoicesById = new Map((invoicesRes.data ?? []).map((i) => [normalizeId(i.id), i as InvoiceRef]));
 
   const invoices = (invoicesRes.data ?? []).map((row) => {
     const invoice = row as InvoiceRef;
-    const appointment = invoice.appointment_id ? appointmentsById.get(invoice.appointment_id) : undefined;
-    const patient = invoice.patient_id ? patientsById.get(invoice.patient_id) : appointment?.patient_id ? patientsById.get(appointment.patient_id) : undefined;
-    const dentist = appointment?.dentist_id ? profilesById.get(appointment.dentist_id) : undefined;
+    const appointment = appointmentsById.get(normalizeId(invoice.appointment_id));
+    const patient = patientsById.get(normalizeId(invoice.patient_id))
+      ?? patientsById.get(normalizeId(appointment?.patient_id));
+    const dentist = profilesById.get(normalizeId(appointment?.dentist_id));
 
     return {
       section: "invoice",
@@ -100,21 +105,17 @@ export async function GET() {
 
   const payments = (paymentsRes.data ?? []).map((row) => {
     const payment = row as Record<string, unknown>;
-    const patientId = typeof payment.patient_id === "string" ? payment.patient_id : null;
-    const invoiceId = typeof payment.invoice_id === "string" ? payment.invoice_id : null;
+    const patientId = normalizeId(payment.patient_id);
+    const invoiceId = normalizeId(payment.invoice_id);
 
-    const linkedInvoice = invoiceId ? invoicesById.get(invoiceId) : undefined;
-    const appointment = linkedInvoice?.appointment_id ? appointmentsById.get(linkedInvoice.appointment_id) : undefined;
+    const linkedInvoice = invoicesById.get(invoiceId);
+    const appointment = appointmentsById.get(normalizeId(linkedInvoice?.appointment_id));
 
-    const patient = patientId
-      ? patientsById.get(patientId)
-      : linkedInvoice?.patient_id
-        ? patientsById.get(linkedInvoice.patient_id)
-        : appointment?.patient_id
-          ? patientsById.get(appointment.patient_id)
-          : undefined;
+    const patient = patientsById.get(patientId)
+      ?? patientsById.get(normalizeId(linkedInvoice?.patient_id))
+      ?? patientsById.get(normalizeId(appointment?.patient_id));
 
-    const dentist = appointment?.dentist_id ? profilesById.get(appointment.dentist_id) : undefined;
+    const dentist = profilesById.get(normalizeId(appointment?.dentist_id));
 
     return {
       section: "payment",

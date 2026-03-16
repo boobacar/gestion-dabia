@@ -146,12 +146,30 @@ export function InvoicePrintModal({
     }
   };
 
+  const toBase64 = async (blob: Blob) => {
+    const buffer = await blob.arrayBuffer();
+    let binary = "";
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+    return btoa(binary);
+  };
+
   const handleAddToDocuments = async () => {
     setIsLinkingDoc(true);
     const toastId = toast.loading("Ajout du document en cours...");
     try {
+      const pdf = await generatePreviewPdf();
+      const blob = pdf.output("blob");
+      const pdfBase64 = await toBase64(blob);
+
       const res = await fetch(`/api/documents/from-invoice/${invoice.id}`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pdfBase64 }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Erreur inconnue");
